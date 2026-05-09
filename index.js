@@ -113,30 +113,51 @@ async function initSheet() {
   }
 }
 
+// Get monthly sheet name in Greek
+function getMonthSheet(dateStr) {
+  const months = ['Ιανουάριος','Φεβρουάριος','Μάρτιος','Απρίλιος','Μάιος','Ιούνιος','Ιούλιος','Αύγουστος','Σεπτέμβριος','Οκτώβριος','Νοέμβριος','Δεκέμβριος'];
+  const d = new Date(dateStr);
+  return `📅 ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 // Add entry to Google Sheet
 async function addToSheet(entry) {
+  const row = [
+    entry.date,
+    entry.amount,
+    entry.currency || 'EUR',
+    entry.category,
+    entry.subcategory || '',
+    entry.merchant || '',
+    entry.description || '',
+    entry.payment_method || 'unknown',
+    '',
+    new Date().toISOString(),
+  ];
+
+  // Write to main "Όλα Μαζί" sheet
   try {
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: 'Spendly!A:J',
+      range: '📊 Όλα Μαζί!A:J',
       valueInputOption: 'RAW',
-      requestBody: {
-        values: [[
-          entry.date,
-          entry.amount,
-          entry.currency || 'EUR',
-          entry.category,
-          entry.subcategory || '',
-          entry.merchant || '',
-          entry.description || '',
-          entry.payment_method || 'unknown',
-          '',
-          new Date().toISOString(),
-        ]],
-      },
+      requestBody: { values: [row] },
     });
   } catch (e) {
-    console.log('Sheet append error:', e.message);
+    console.log('Main sheet error:', e.message);
+  }
+
+  // Write to monthly sheet
+  try {
+    const monthSheet = getMonthSheet(entry.date);
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: `${monthSheet}!A:J`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [row] },
+    });
+  } catch (e) {
+    console.log('Monthly sheet error:', e.message);
   }
 }
 
@@ -145,10 +166,10 @@ async function getMonthlyTotals() {
   try {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: 'Spendly!A:J',
+      range: `${getMonthSheet(new Date().toISOString().slice(0,10))}!A:J`,
     });
     const rows = response.data.values || [];
-    const currentMonth = new Date().toISOString().slice(0, 7);
+    
     const totals = {};
     let total = 0;
     rows.slice(1).forEach(row => {
