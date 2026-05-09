@@ -113,11 +113,49 @@ async function initSheet() {
   }
 }
 
-// Get monthly sheet name in Greek
-function getMonthSheet(dateStr) {
-  const months = ['Ιανουάριος','Φεβρουάριος','Μάρτιος','Απρίλιος','Μάιος','Ιούνιος','Ιούλιος','Αύγουστος','Σεπτέμβριος','Οκτώβριος','Νοέμβριος','Δεκέμβριος'];
-  const d = new Date(dateStr);
-  return `${months[d.getMonth()]} ${d.getFullYear()}`;
+// Get all sheet names from Google Sheets and find the monthly one
+async function getMonthSheetName(dateStr) {
+  try {
+    const d = new Date(dateStr);
+    const month = d.getMonth(); // 0-11
+    const year = d.getFullYear();
+    
+    // Get all sheet names from the spreadsheet
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID });
+    const sheetNames = meta.data.sheets.map(s => s.properties.title);
+    console.log('Available sheets:', sheetNames);
+    
+    // Find sheet that contains the month number pattern
+    // Months in Greek: Ιανουάριος=0, Φεβρουάριος=1, etc.
+    const greekMonths = ['Ιανουάριος','Φεβρουάριος','Μάρτιος','Απρίλιος','Μάιος','Ιούνιος','Ιούλιος','Αύγουστος','Σεπτέμβριος','Οκτώβριος','Νοέμβριος','Δεκέμβριος'];
+    const englishMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    
+    const targetYear = String(year);
+    const found = sheetNames.find(name => {
+      const hasYear = name.includes(targetYear);
+      const hasGreek = name.includes(greekMonths[month]);
+      const hasEnglish = name.includes(englishMonths[month]);
+      return hasYear && (hasGreek || hasEnglish);
+    });
+    
+    console.log('Found monthly sheet:', found);
+    return found || null;
+  } catch(e) {
+    console.log('getMonthSheetName error:', e.message);
+    return null;
+  }
+}
+
+// Get main sheet name
+async function getMainSheetName() {
+  try {
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID });
+    const sheetNames = meta.data.sheets.map(s => s.properties.title);
+    const main = sheetNames.find(n => n.includes('Όλα') || n.includes('All') || n.includes('Overview'));
+    return main || sheetNames[0];
+  } catch(e) {
+    return 'Sheet1';
+  }
 }
 
 // Add entry to Google Sheet
@@ -135,27 +173,32 @@ async function addToSheet(entry) {
     new Date().toISOString(),
   ];
 
-  // Write to main "Όλα Μαζί" sheet
+  // Write to main sheet
   try {
+    const mainSheet = await getMainSheetName();
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: '📊 Όλα Μαζί!A:J',
+      range: `${mainSheet}!A:J`,
       valueInputOption: 'RAW',
       requestBody: { values: [row] },
     });
+    console.log('Written to main sheet:', mainSheet);
   } catch (e) {
     console.log('Main sheet error:', e.message);
   }
 
   // Write to monthly sheet
   try {
-    const monthSheet = getMonthSheet(entry.date);
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEET_ID,
-      range: `${monthSheet}!A:J`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [row] },
-    });
+    const monthSheet = await getMonthSheetName(entry.date);
+    if (monthSheet) {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: SHEET_ID,
+        range: `${monthSheet}!A:J`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [row] },
+      });
+      console.log('Written to monthly sheet:', monthSheet);
+    }
   } catch (e) {
     console.log('Monthly sheet error:', e.message);
   }
