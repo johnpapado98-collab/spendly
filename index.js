@@ -117,7 +117,7 @@ async function initSheet() {
 function getMonthSheet(dateStr) {
   const months = ['Ιανουάριος','Φεβρουάριος','Μάρτιος','Απρίλιος','Μάιος','Ιούνιος','Ιούλιος','Αύγουστος','Σεπτέμβριος','Οκτώβριος','Νοέμβριος','Δεκέμβριος'];
   const d = new Date(dateStr);
-  return `📅 ${months[d.getMonth()]} ${d.getFullYear()}`;
+  return `${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 // Add entry to Google Sheet
@@ -172,8 +172,8 @@ async function getMonthlyTotals() {
     
     const totals = {};
     let total = 0;
-    rows.slice(1).forEach(row => {
-      if (row[0] && row[0].startsWith(currentMonth)) {
+    rows.slice(5).forEach(row => {
+      if (row[0] && row[1]) {
         const cat = row[3] || 'Other';
         const amt = parseFloat(row[1]) || 0;
         totals[cat] = (totals[cat] || 0) + amt;
