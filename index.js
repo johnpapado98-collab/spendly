@@ -207,24 +207,32 @@ async function addToSheet(entry) {
 // Get monthly totals from sheet
 async function getMonthlyTotals() {
   try {
+    const monthSheet = await getMonthSheetName(new Date().toISOString().slice(0,10));
+    if (!monthSheet) return { totals: {}, total: 0 };
+    
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: `${getMonthSheet(new Date().toISOString().slice(0,10))}!A:J`,
+      range: `${monthSheet}!A:J`,
     });
     const rows = response.data.values || [];
     
     const totals = {};
     let total = 0;
-    rows.slice(5).forEach(row => {
-      if (row[0] && row[1]) {
+    // Skip header rows, look for rows with valid date and amount
+    rows.forEach(row => {
+      if (row[0] && row[1] && row[0].match(/^\d{4}-\d{2}-\d{2}/)) {
         const cat = row[3] || 'Other';
         const amt = parseFloat(row[1]) || 0;
-        totals[cat] = (totals[cat] || 0) + amt;
-        total += amt;
+        if (amt > 0) {
+          totals[cat] = (totals[cat] || 0) + amt;
+          total += amt;
+        }
       }
     });
+    console.log('Monthly totals:', totals, 'Total:', total);
     return { totals, total };
   } catch (e) {
+    console.log('getMonthlyTotals error:', e.message);
     return { totals: {}, total: 0 };
   }
 }
