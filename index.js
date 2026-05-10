@@ -260,7 +260,7 @@ async function processMessage(userMessage) {
     if (isSearchQuery) {
       // Use web search tool
       const res = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-5',
         max_tokens: 2000,
         system: `You are Spendly, a helpful AI assistant on WhatsApp. Today is ${getToday()}.
 The user is asking for real-time information. Search the web and answer concisely in the SAME language as the user.
