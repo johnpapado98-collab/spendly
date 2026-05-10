@@ -204,25 +204,24 @@ async function addToSheet(entry) {
   }
 }
 
-// Get monthly totals from sheet
+// Get monthly totals - reads from main sheet and filters by current month
 async function getMonthlyTotals() {
   try {
-    const monthSheet = await getMonthSheetName(new Date().toISOString().slice(0,10));
-    if (!monthSheet) return { totals: {}, total: 0 };
+    const currentMonth = new Date().toISOString().slice(0, 7); // e.g. "2026-05"
     
+    const mainSheet = await getMainSheetName();
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: `${monthSheet}!A:J`,
+      range: `${mainSheet}!A:J`,
     });
     const rows = response.data.values || [];
     
     const totals = {};
     let total = 0;
-    // Skip header rows, look for rows with valid date and amount
     rows.forEach(row => {
-      if (row[0] && row[1] && row[0].match(/^\d{4}-\d{2}-\d{2}/)) {
+      if (row[0] && row[1] && row[0].startsWith(currentMonth)) {
         const cat = row[3] || 'Other';
-        const amt = parseFloat(row[1]) || 0;
+        const amt = parseFloat(row[1].toString().replace(/[^0-9.]/g, '')) || 0;
         if (amt > 0) {
           totals[cat] = (totals[cat] || 0) + amt;
           total += amt;
