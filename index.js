@@ -19,59 +19,62 @@ const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 
 const budgets = {};
 
-const today = new Date().toISOString().slice(0,10);
-const tomorrow = new Date(Date.now()+86400000).toISOString().slice(0,10);
-const yesterday = new Date(Date.now()-86400000).toISOString().slice(0,10);
+const getToday = () => new Date().toISOString().slice(0,10);
+const getTomorrow = () => new Date(Date.now()+86400000).toISOString().slice(0,10);
+const getYesterday = () => new Date(Date.now()-86400000).toISOString().slice(0,10);
 
-const SYSTEM_PROMPT = `You are Spendly, a personal AI assistant on WhatsApp. Today is ${today}.
+// ─── SYSTEM PROMPT ───
+function buildPrompt() {
+  const today = getToday();
+  const tomorrow = getTomorrow();
+  const yesterday = getYesterday();
+
+  return `You are Spendly, a personal AI assistant on WhatsApp. Today is ${today}.
 
 PERSONALITY:
-- For tasks, expenses, reminders, notes: fast, minimal, professional. No jokes.
-- For casual chat, small talk, "how are you", "thanks": warm, witty, slightly sarcastic. Like a smart friend.
-- Never mix the two modes.
+- For expenses, reminders, notes: fast, minimal, professional. No jokes.
+- For casual chat, "how are you", "thanks", small talk: warm, witty, slightly sarcastic. Like a smart friend.
+- Never mix modes.
 
-YOU HANDLE 4 THINGS:
+YOU HANDLE 3 THINGS:
 1. FINANCE - expenses, budgets, summaries
-2. TASKS - to-do items
-3. REMINDERS - at specific date/time
-4. IDEAS & NOTES
+2. REMINDERS - anything to remember/do, with or without a date
+3. IDEAS & NOTES
 
-DETECTION RULES (apply in this order):
-- Amount + item (no time/date trigger) = EXPENSE
-- "task/todo/να κάνω κάτι/na kanw" without time = TASK
-- "θύμισέ μου/thimise mou/reminder/να θυμηθώ" OR any message with a future date/time + action = REMINDER
+DETECTION (in order):
+- Amount + item = EXPENSE
+- "θύμισέ μου/thimise mou/να κάνω/reminder/να θυμηθώ/na kanw/todo/να καλέσω" OR message with future date/time + action = REMINDER
 - "ιδέα/idea/σημείωσε/simeiose/note/σκέφτηκα" = NOTE
-- "τι reminders/ποια reminders/τι θυμίσεις/ti reminders" = LIST_REMINDERS
-- "τι έχω να κάνω/tasks μου/lista mou/ti exw" = LIST_TASKS
+- "τι reminders/τι έχω/τι θυμίσεις/ti exw/lista mou/reminders mou" = LIST_REMINDERS
 - "ιδέες μου/idees mou/σημειώσεις μου" = LIST_IDEAS
-- "πόσα ξόδεψα/posa xodepsa/summary/synolo" = MONTHLY_SUMMARY
+- "πόσα ξόδεψα/posa xodepsa/summary/synolo/ανάλυση/analisi" = MONTHLY_SUMMARY
+- "budget X Y" = BUDGET
 - Anything else = CHAT
 
-CRITICAL REMINDER RULE: The "text" field MUST contain the full description of what to remember.
-Example: "Θύμισέ μου αύριο να δώσω 50 ευρώ στον Πάνο"
-→ text = "Να δώσω 50 ευρώ στον Πάνο"  ← FULL description, NOT empty!
-→ datetime = tomorrow T09:00:00
-→ message = "⏰ Reminder για αύριο: Να δώσω 50 ευρώ στον Πάνο!"
+REMINDER RULES:
+- text field = FULL description of what to remember (NEVER empty or vague!)
+- datetime = ISO datetime if date/time mentioned, null if no date given
+- Examples:
+  "θύμισέ μου αύριο να δώσω 50€ στον Πάνο" → text:"Να δώσω 50€ στον Πάνο", datetime:"${tomorrow}T09:00:00"
+  "23 Ιουλίου στις 15:00 σύσκεψη" → text:"Σύσκεψη", datetime:"2026-07-23T15:00:00"
+  "να αγοράσω γάλα" → text:"Να αγοράσω γάλα", datetime:null
+  "να καλέσω τον Γιώργη" → text:"Να καλέσω τον Γιώργη", datetime:null
 
-NEVER leave text field empty or vague. Extract the FULL action from the message.
-
-OUTPUT JSON ONLY - no markdown, no explanation:
+OUTPUT JSON ONLY - no markdown:
 
 EXPENSE: {"type":"expense","entries":[{"amount":3.50,"currency":"EUR","category":"Coffee","subcategory":"Coffee","merchant":null,"description":"kafes","date":"${today}","payment_method":"unknown","confidence":0.97}],"needs_clarification":false,"question":null,"message":"✅ Καταγράφηκε! ☕ €3.50"}
 
-TASK: {"type":"task","text":"Να καλέσω τον Γιώργη","message":"✅ Task προστέθηκε!"}
-
-REMINDER: {"type":"reminder","text":"Να πάρω τηλέφωνο τον Γιώργη","datetime":"${tomorrow}T10:00:00","message":"⏰ Reminder για αύριο στις 10:00!"}
+REMINDER: {"type":"reminder","text":"Να δώσω 50€ στον Πάνο","datetime":"${tomorrow}T09:00:00","message":"⏰ Reminder για αύριο: Να δώσω 50€ στον Πάνο!"}
+REMINDER (no date): {"type":"reminder","text":"Να αγοράσω γάλα","datetime":null,"message":"📝 Προστέθηκε στη λίστα σου!"}
 
 NOTE: {"type":"note","text":"Ιδέα για landing page","message":"💡 Σημειώθηκε!"}
 
-LIST_TASKS: {"type":"list_tasks"}
 LIST_REMINDERS: {"type":"list_reminders"}
 LIST_IDEAS: {"type":"list_ideas"}
 MONTHLY_SUMMARY: {"type":"monthly_summary"}
 BUDGET: {"type":"budget","category":"Coffee","amount":80,"message":"✅ Budget καφέ €80/μήνα!"}
 CHAT: {"type":"chat","message":"Καλά, αν και εσύ με κάνεις να δουλεύω ασταμάτητα 😄"}
-CLARIFICATION: {"type":"clarification","question":"Πόσο ήταν ο καφές και πόσο το σουβλάκι;"}
+CLARIFICATION: {"type":"clarification","question":"Πόσο ήταν ο καφές;"}
 
 CATEGORIES: Food, Coffee, Supermarket, Transport, Fuel, Shopping, Entertainment, Bills, Health, Travel, Subscriptions, Rent, Income, Other
 
@@ -88,20 +91,20 @@ CATEGORY RULES:
 - netflix/spotify/sindromi → Subscriptions
 
 DATE RULES:
-- No date → ${today}
 - αύριο/avrio → ${tomorrow}
 - χθες/xtes → ${yesterday}
+- No date on expense → ${today}
 - "23 Ιουλίου" → 2026-07-23
-- "23 Ιουλίου στις 15:00" → 2026-07-23T15:00:00
-- No time given → T09:00:00
+- No time → T09:00:00
 
-CHAT PERSONALITY EXAMPLES:
+CHAT EXAMPLES:
 - "πώς είσαι" → "Καλά! Έτοιμος να καταγράψω ό,τι μου πεις 💪"
 - "ευχαριστώ" → "Κάνω αυτό που ξέρω καλύτερα 😄"
-- "βαριέμαι" → "Κι εγώ αλλά εγώ δουλεύω. Έχεις tasks εκκρεμείς 😏"
-- "πες μου τι μπορείς να κάνεις" → Explain all 4 features with examples in a friendly way
+- "βαριέμαι" → "Κι εγώ αλλά εγώ δουλεύω 😏"
+- "πες μου τι κάνεις" → Explain 3 features with examples, friendly tone
 
-IMPORTANT: Return ONLY valid JSON. Respond in the same language as the user.`;
+IMPORTANT: ONLY valid JSON. Same language as user.`;
+}
 
 // ─── SHEET HELPERS ───
 async function getSheetNames() {
@@ -129,10 +132,8 @@ async function getMonthSheetName(dateStr) {
 async function appendRow(sheetName, row) {
   try {
     await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEET_ID,
-      range: `${sheetName}!A:Z`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [row] },
+      spreadsheetId: SHEET_ID, range: `${sheetName}!A:Z`,
+      valueInputOption: 'RAW', requestBody: { values: [row] },
     });
   } catch(e) { console.log(`Append error [${sheetName}]:`, e.message); }
 }
@@ -144,14 +145,12 @@ async function getRows(sheetName) {
   } catch(e) { return []; }
 }
 
-async function updateCell(sheetName, row, col, value) {
+async function updateCell(sheetName, rowNum, col, value) {
   try {
     const colLetter = String.fromCharCode(64 + col);
     await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEET_ID,
-      range: `${sheetName}!${colLetter}${row}`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [[value]] },
+      spreadsheetId: SHEET_ID, range: `${sheetName}!${colLetter}${rowNum}`,
+      valueInputOption: 'RAW', requestBody: { values: [[value]] },
     });
   } catch(e) { console.log(`Update error:`, e.message); }
 }
@@ -183,19 +182,35 @@ async function getMonthlyTotals() {
   } catch(e) { return { totals:{}, total:0 }; }
 }
 
-// ─── TASKS ───
-async function addTask(text) {
-  await appendRow('✅ Tasks', [today, text, 'pending', new Date().toISOString()]);
-}
+function buildSummaryMessage(totals, total, title) {
+  const catEmoji = { Coffee:'☕', Fuel:'⛽', Supermarket:'🛒', Food:'🍽️', Transport:'🚗', Shopping:'🛍️', Entertainment:'🎬', Bills:'💡', Health:'💊', Travel:'✈️', Subscriptions:'📱', Rent:'🏠', Income:'💰', Other:'📌' };
+  const sorted = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+  const maxAmt = sorted[0]?.[1] || 1;
 
-async function getTasks() {
-  const rows = await getRows('✅ Tasks');
-  return rows.filter(r => r[1] && (r[2] === 'pending' || !r[2]));
+  let msg = `📊 *${title}*\n━━━━━━━━━━━━━━━\n`;
+  if (sorted.length === 0) {
+    msg += 'Δεν έχεις καταγράψει έξοδα ακόμα!';
+  } else {
+    sorted.forEach(([cat, amt]) => {
+      const budget = budgets[cat.toLowerCase()];
+      const pct = budget
+        ? Math.min(Math.round((amt/budget)*100), 100)
+        : Math.round((amt/maxAmt)*100);
+      const filled = Math.round(pct/10);
+      const bar = '█'.repeat(filled) + '░'.repeat(10-filled);
+      const budgetStr = budget ? ` / €${budget}` : '';
+      msg += `${catEmoji[cat]||'📌'} ${cat}: €${amt.toFixed(2)}${budgetStr}\n${bar} ${pct}%\n`;
+    });
+  }
+  msg += `━━━━━━━━━━━━━━━\n💰 Σύνολο: €${total.toFixed(2)}`;
+  if (sorted.length > 0) msg += `\n📈 Μεγαλύτερο: ${catEmoji[sorted[0][0]]||'📌'} ${sorted[0][0]} €${sorted[0][1].toFixed(2)}`;
+  return msg;
 }
 
 // ─── REMINDERS ───
 async function addReminder(text, datetime) {
-  await appendRow('⏰ Reminders', [datetime, text, 'pending', new Date().toISOString()]);
+  const row = [datetime || '', text, 'pending', new Date().toISOString()];
+  await appendRow('⏰ Reminders', row);
 }
 
 async function getReminders() {
@@ -211,7 +226,7 @@ async function checkAndSendReminders(userPhone) {
       const r = rows[i];
       if (!r[0] || r[2] === 'sent') continue;
       const reminderTime = new Date(r[0]);
-      if (reminderTime <= now) {
+      if (!isNaN(reminderTime) && reminderTime <= now) {
         await sendWhatsApp(userPhone, `⏰ *REMINDER*\n━━━━━━━━━━━━━━━\n${r[1]}\n━━━━━━━━━━━━━━━\nΑπάντησε "έγινε" αν το έκανες ✅`);
         await updateCell('⏰ Reminders', i+1, 3, 'sent');
       }
@@ -221,12 +236,11 @@ async function checkAndSendReminders(userPhone) {
 
 // ─── IDEAS ───
 async function addNote(text) {
-  await appendRow('💡 Ιδέες', [today, text, new Date().toISOString()]);
+  await appendRow('💡 Ιδέες', [getToday(), text, new Date().toISOString()]);
 }
 
 async function getIdeas() {
-  const rows = await getRows('💡 Ιδέες');
-  return rows.filter(r => r[1]);
+  return (await getRows('💡 Ιδέες')).filter(r => r[1]);
 }
 
 // ─── WHATSAPP ───
@@ -241,7 +255,7 @@ async function processMessage(userMessage) {
     const res = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1000,
-      system: SYSTEM_PROMPT,
+      system: buildPrompt(),
       messages: [{ role: 'user', content: userMessage }],
     });
     return JSON.parse(res.content[0].text.replace(/```json|```/g,'').trim());
@@ -275,6 +289,8 @@ app.post('/webhook', async (req, res) => {
           const pct = Math.min(Math.round((spent/budget)*100), 100);
           const filled = Math.round(pct/10);
           msg += `\n💳 ${entry.category}: €${spent.toFixed(2)} / €${budget}\n${'█'.repeat(filled)}${'░'.repeat(10-filled)} ${pct}%`;
+          if (pct >= 100) msg += `\n⚠️ Ξεπέρασες το budget σου!`;
+          else if (pct >= 80) msg += `\n⚠️ Πλησιάζεις το budget σου!`;
         }
         await sendWhatsApp(userPhone, msg);
       }
@@ -289,49 +305,36 @@ app.post('/webhook', async (req, res) => {
       const { totals, total } = await getMonthlyTotals();
       const now = new Date();
       const monthName = now.toLocaleString('el-GR', { month:'long' });
-      let msg = `📊 *${monthName} ${now.getFullYear()}*\n━━━━━━━━━━━━━━━\n`;
-      if (Object.keys(totals).length === 0) {
-        msg += 'Δεν έχεις καταγράψει έξοδα ακόμα!';
-      } else {
-        Object.entries(totals).sort((a,b)=>b[1]-a[1]).forEach(([cat,amt]) => {
-          msg += `${catEmoji[cat]||'📌'} ${cat}: €${amt.toFixed(2)}\n`;
-        });
-      }
-      msg += `━━━━━━━━━━━━━━━\n💰 Σύνολο: €${total.toFixed(2)}`;
-      await sendWhatsApp(userPhone, msg);
-      break;
-    }
-
-    case 'task':
-      await addTask(parsed.text);
-      await sendWhatsApp(userPhone, parsed.message || '✅ Task προστέθηκε!');
-      break;
-
-    case 'list_tasks': {
-      const tasks = await getTasks();
-      if (tasks.length === 0) { await sendWhatsApp(userPhone, '✅ Δεν έχεις εκκρεμείς tasks!'); break; }
-      let msg = `✅ *Tasks*\n━━━━━━━━━━━━━━━\n`;
-      tasks.forEach((t,i) => { msg += `${i+1}. ${t[1]}\n`; });
+      const msg = buildSummaryMessage(totals, total, `${monthName} ${now.getFullYear()}`);
       await sendWhatsApp(userPhone, msg);
       break;
     }
 
     case 'reminder':
       await addReminder(parsed.text, parsed.datetime);
-      await sendWhatsApp(userPhone, parsed.message || '⏰ Reminder ορίστηκε!');
+      await sendWhatsApp(userPhone, parsed.message || (parsed.datetime ? '⏰ Reminder ορίστηκε!' : '📝 Προστέθηκε στη λίστα σου!'));
       break;
 
     case 'list_reminders': {
       const reminders = await getReminders();
-      if (reminders.length === 0) { await sendWhatsApp(userPhone, '⏰ Δεν έχεις εκκρεμείς reminders!'); break; }
-      let msg = `⏰ *Reminders*\n━━━━━━━━━━━━━━━\n`;
-      reminders.forEach((r,i) => {
-        try {
-          const dt = new Date(r[0]);
-          const dateStr = dt.toLocaleString('el-GR', { day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' });
-          msg += `${i+1}. ${r[1]} — ${dateStr}\n`;
-        } catch(e) { msg += `${i+1}. ${r[1]} — ${r[0]}\n`; }
-      });
+      if (reminders.length === 0) { await sendWhatsApp(userPhone, '📋 Δεν έχεις τίποτα εκκρεμές!'); break; }
+      const withDate = reminders.filter(r => r[0]);
+      const withoutDate = reminders.filter(r => !r[0]);
+      let msg = `📋 *Εκκρεμή*\n━━━━━━━━━━━━━━━\n`;
+      if (withDate.length > 0) {
+        msg += `⏰ *Με ημερομηνία:*\n`;
+        withDate.forEach((r,i) => {
+          try {
+            const dt = new Date(r[0]);
+            const dateStr = dt.toLocaleString('el-GR', { day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' });
+            msg += `${i+1}. ${r[1]} — ${dateStr}\n`;
+          } catch(e) { msg += `${i+1}. ${r[1]}\n`; }
+        });
+      }
+      if (withoutDate.length > 0) {
+        msg += `\n📝 *Χωρίς ημερομηνία:*\n`;
+        withoutDate.forEach((r,i) => { msg += `${i+1}. ${r[1]}\n`; });
+      }
       await sendWhatsApp(userPhone, msg);
       break;
     }
@@ -374,9 +377,9 @@ cron.schedule('0 20 * * 0', async () => {
   const userPhone = process.env.USER_PHONE;
   if (!userPhone) return;
   const { totals, total } = await getMonthlyTotals();
-  let msg = `📊 *Εβδομαδιαία Σύνοψη*\n━━━━━━━━━━━━━━━\n`;
-  Object.entries(totals).sort((a,b)=>b[1]-a[1]).forEach(([cat,amt]) => { msg += `${catEmoji[cat]||'📌'} ${cat}: €${amt.toFixed(2)}\n`; });
-  msg += `━━━━━━━━━━━━━━━\n💰 Σύνολο: €${total.toFixed(2)}`;
+  const now = new Date();
+  const monthName = now.toLocaleString('el-GR', { month:'long' });
+  const msg = buildSummaryMessage(totals, total, `Εβδομαδιαία Σύνοψη — ${monthName}`);
   await sendWhatsApp(userPhone, msg);
 });
 
