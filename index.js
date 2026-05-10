@@ -408,6 +408,61 @@ cron.schedule('* * * * *', async () => {
   if (userPhone) await checkAndSendReminders(userPhone);
 });
 
+// Daily Morning Briefing - every day at 10:00
+async function sendMorningBriefing(userPhone) {
+  try {
+    const today = getToday();
+    const now = new Date();
+    const dateStr = now.toLocaleString('el-GR', { weekday:'long', day:'numeric', month:'long' });
+
+    const res = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 3000,
+      system: `You are Spendly, a personal AI assistant. Create a morning briefing in Greek for WhatsApp.
+Format it exactly like this (use actual data from web search):
+
+🌅 *Καλημέρα! ${dateStr}*
+━━━━━━━━━━━━━━━
+
+₿ *Bitcoin:*  (CHANGE%)
+Ξ *Ethereum:*  (CHANGE%)
+
+━━━━━━━━━━━━━━━
+📰 *Ναυτεμπορική — Κορυφαία νέα:*
+1. [Τίτλος νέου] → https://link
+2. [Τίτλος νέου] → https://link
+3. [Τίτλος νέου] → https://link
+
+💰 *NewMoney — Κορυφαία νέα:*
+1. [Τίτλος νέου] → https://link
+2. [Τίτλος νέου] → https://link
+3. [Τίτλος νέου] → https://link
+
+🗞️ *Πρώτο Θέμα — Κορυφαία νέα:*
+1. [Τίτλος νέου] → https://link
+2. [Τίτλος νέου] → https://link
+3. [Τίτλος νέου] → https://link
+━━━━━━━━━━━━━━━
+Καλή μέρα! 💪
+
+Search the web for: current Bitcoin price, current Ethereum price, latest news from naftemporiki.gr, latest news from newmoney.gr, latest news from protothema.gr
+Use REAL data only. Keep titles short. Include real links.`,
+      messages: [{ role: 'user', content: 'Create morning briefing with real data from web search' }],
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+    });
+
+    const text = res.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    await sendWhatsApp(userPhone, text || 'Καλημέρα! Δεν μπόρεσα να φέρω τα νέα αυτή τη στιγμή.');
+  } catch(e) {
+    console.log('Morning briefing error:', e.message);
+  }
+}
+
+cron.schedule('0 10 * * *', async () => {
+  const userPhone = process.env.USER_PHONE;
+  if (userPhone) await sendMorningBriefing(userPhone);
+});
+
 // Weekly report every Sunday 20:00
 cron.schedule('0 20 * * 0', async () => {
   const userPhone = process.env.USER_PHONE;
