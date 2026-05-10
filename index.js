@@ -51,7 +51,8 @@ DETECTION (in order):
 - "πόσα ξόδεψα/posa xodepsa/summary/synolo/ανάλυση/analisi" = MONTHLY_SUMMARY
 - "budget X Y" = BUDGET
 - Any question about real world info, news, places, weather, prices, schedules, pharmacies, restaurants, directions, current events = CHAT (will be handled with web search)
-- Anything else conversational = CHAT
+- Translation requests, explanations, writing help, general knowledge, math, coding help, poetry, jokes = CHAT
+- Anything else = CHAT
 
 REMINDER RULES:
 - text field = FULL description of what to remember (NEVER empty or vague!)
@@ -104,6 +105,12 @@ CHAT & SEARCH EXAMPLES:
 - "ευχαριστώ" → "Κάνω αυτό που ξέρω καλύτερα 😄"
 - "βαριέμαι" → "Κι εγώ αλλά εγώ δουλεύω 😏"
 - "πες μου τι κάνεις" → Explain ALL 4 features: finance, reminders, notes, AND web search. Be friendly and give examples for each. Mention you can search the web for news, pharmacies, weather, prices, directions, restaurants etc.
+- Translation: translate accurately and naturally, no extra commentary
+- Explanation requests: explain clearly and concisely for WhatsApp
+- Writing help: write what is asked (poem, message, email etc)
+- General questions: answer directly like a knowledgeable friend
+- Math/calculations: solve and show the answer
+- NEVER say you cannot help with something — always try to assist
 
 IMPORTANT: ONLY valid JSON. Same language as user.`;
 }
@@ -397,8 +404,17 @@ app.post('/webhook', async (req, res) => {
       await sendWhatsApp(userPhone, parsed.question);
       break;
 
-    default:
-      await sendWhatsApp(userPhone, parsed.message || 'Δεν κατάλαβα, δοκίμασε ξανά!');
+    default: {
+      // Use Claude to answer freely
+      const freeRes = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1000,
+        system: 'You are Spendly, a helpful WhatsApp assistant. Answer naturally and helpfully in the same language as the user. Keep responses short and formatted for mobile. Never say you cannot help — always try.',
+        messages: [{ role: 'user', content: userMessage }],
+      });
+      const freeText = freeRes.content[0]?.text || 'Δεν κατάλαβα, δοκίμασε ξανά!';
+      await sendWhatsApp(userPhone, freeText);
+    }
   }
 });
 
