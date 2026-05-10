@@ -250,8 +250,35 @@ async function sendWhatsApp(to, message) {
   } catch(e) { console.log('WhatsApp error:', e.message); }
 }
 
+// Process message — uses web search for search queries, JSON for everything else
 async function processMessage(userMessage) {
   try {
+    // Detect if this is a search/info query
+    const searchKeywords = ['εφημερεύον','εφημερεύει','καιρός','νέα','ειδήσεις','τιμή','ωράριο','ανοίγει','κλείνει','πρωτοσέλιδα','χάρτης','οδηγίες','πώς πάω','που είναι','restaurant','φαγητό κοντά','open now','τηλέφωνο','efimerevon','kairos','nea','eidiseis','timi','orario'];
+    const isSearchQuery = searchKeywords.some(k => userMessage.toLowerCase().includes(k));
+
+    if (isSearchQuery) {
+      // Use web search tool
+      const res = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        system: `You are Spendly, a helpful AI assistant on WhatsApp. Today is ${getToday()}.
+The user is asking for real-time information. Search the web and answer concisely in the SAME language as the user.
+Format your response for WhatsApp:
+- Use emojis where appropriate
+- Keep it short and readable on mobile
+- If it is a pharmacy/place, include Google Maps link: https://www.google.com/maps/search/QUERY+LOCATION
+- If news, give 3-5 bullet points with the most important headlines and source links
+- Always respond in Greek if the user writes in Greek or Greeklish`,
+        messages: [{ role: 'user', content: userMessage }],
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+      });
+      // Extract text from response (may include tool use blocks)
+      const textContent = res.content.filter(b => b.type === 'text').map(b => b.text).join('');
+      return { type: 'search_result', message: textContent || 'Δεν βρήκα αποτελέσματα.' };
+    }
+
+    // Normal JSON processing
     const res = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1000,
@@ -352,6 +379,10 @@ app.post('/webhook', async (req, res) => {
       await sendWhatsApp(userPhone, msg);
       break;
     }
+
+    case 'search_result':
+      await sendWhatsApp(userPhone, parsed.message);
+      break;
 
     case 'chat':
       await sendWhatsApp(userPhone, parsed.message);
