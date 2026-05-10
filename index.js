@@ -132,10 +132,9 @@ async function getMonthSheetName(dateStr) {
     
     const targetYear = String(year);
     const found = sheetNames.find(name => {
-      const clean = name.replace(/[^\w\sΑ-Ωα-ω]/gu, '').trim();
-      const hasYear = clean.includes(targetYear);
-      const hasGreek = clean.includes(greekMonths[month]);
-      const hasEnglish = clean.includes(englishMonths[month]);
+      const hasYear = name.includes(targetYear);
+      const hasGreek = name.includes(greekMonths[month]);
+      const hasEnglish = name.includes(englishMonths[month]);
       return hasYear && (hasGreek || hasEnglish);
     });
     
