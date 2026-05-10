@@ -36,10 +36,11 @@ PERSONALITY:
 - For casual chat, "how are you", "thanks", small talk: warm, witty, slightly sarcastic. Like a smart friend.
 - Never mix modes.
 
-YOU HANDLE 3 THINGS:
+YOU HANDLE 4 THINGS:
 1. FINANCE - expenses, budgets, summaries
 2. REMINDERS - anything to remember/do, with or without a date
 3. IDEAS & NOTES
+4. WEB SEARCH - anything the user wants to look up online
 
 DETECTION (in order):
 - Amount + item = EXPENSE
@@ -49,7 +50,8 @@ DETECTION (in order):
 - "ιδέες μου/idees mou/σημειώσεις μου" = LIST_IDEAS
 - "πόσα ξόδεψα/posa xodepsa/summary/synolo/ανάλυση/analisi" = MONTHLY_SUMMARY
 - "budget X Y" = BUDGET
-- Anything else = CHAT
+- Any question about real world info, news, places, weather, prices, schedules, pharmacies, restaurants, directions, current events = CHAT (will be handled with web search)
+- Anything else conversational = CHAT
 
 REMINDER RULES:
 - text field = FULL description of what to remember (NEVER empty or vague!)
@@ -97,11 +99,11 @@ DATE RULES:
 - "23 Ιουλίου" → 2026-07-23
 - No time → T09:00:00
 
-CHAT EXAMPLES:
+CHAT & SEARCH EXAMPLES:
 - "πώς είσαι" → "Καλά! Έτοιμος να καταγράψω ό,τι μου πεις 💪"
 - "ευχαριστώ" → "Κάνω αυτό που ξέρω καλύτερα 😄"
 - "βαριέμαι" → "Κι εγώ αλλά εγώ δουλεύω 😏"
-- "πες μου τι κάνεις" → Explain 3 features with examples, friendly tone
+- "πες μου τι κάνεις" → Explain ALL 4 features: finance, reminders, notes, AND web search. Be friendly and give examples for each. Mention you can search the web for news, pharmacies, weather, prices, directions, restaurants etc.
 
 IMPORTANT: ONLY valid JSON. Same language as user.`;
 }
@@ -254,8 +256,11 @@ async function sendWhatsApp(to, message) {
 async function processMessage(userMessage) {
   try {
     // Detect if this is a search/info query
-    const searchKeywords = ['εφημερεύον','εφημερεύει','καιρός','νέα','ειδήσεις','τιμή','ωράριο','ανοίγει','κλείνει','πρωτοσέλιδα','χάρτης','οδηγίες','πώς πάω','που είναι','restaurant','φαγητό κοντά','open now','τηλέφωνο','efimerevon','kairos','nea','eidiseis','timi','orario'];
-    const isSearchQuery = searchKeywords.some(k => userMessage.toLowerCase().includes(k));
+    // Detect search vs structured command
+    const structuredKeywords = ['posa xodepsa','πόσα ξόδεψα','budget','reminder','θύμισέ','thimise','ιδέα','idea','σημείωσε','simeiose','τι έχω','ti exw','reminders mou','ιδέες μου','idees'];
+    const isStructured = structuredKeywords.some(k => userMessage.toLowerCase().includes(k.toLowerCase()));
+    const looksLikeExpense = /^[\w\s]+ \d/.test(userMessage.trim()) && userMessage.trim().split(' ').length <= 5;
+    const isSearchQuery = !isStructured && !looksLikeExpense && (userMessage.includes('?') || userMessage.includes(';') || userMessage.length > 30 || /εφημερεύ|καιρ|νέα|ειδήσ|τιμή|ωράρ|ανοίγ|κλείν|πρωτοσέλ|χάρτ|οδηγί|restaurant|φαγητό|efimerev|kairos|nea|eidis|timi|orario|που είναι|πού|ποιο|ποια|πότε|πώς|ψάξε|βρες|δείξε|πες μου για|tell me|find|search|show me/i.test(userMessage));
 
     if (isSearchQuery) {
       // Use web search tool
